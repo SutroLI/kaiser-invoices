@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseMembershipRows } from './parseMembershipText'
-import { applyMemberRoster, ignoredOcrWarning, rosterMatchScore } from './matchRoster'
+import { applyMemberRoster, ignoredOcrWarning, leftoverOcrAfterFill, rosterMatchScore, unusedOcrRows } from './matchRoster'
 import { formatRosterName, parseMemberRoster } from './memberRoster'
 
 describe('rosterMatchScore', () => {
@@ -17,9 +17,25 @@ describe('rosterMatchScore', () => {
     )
   })
 
+  it('matches OCR names with junk stuck in front of the last name', () => {
+    expect(rosterMatchScore('DIBBLE, SEAN', 'EE DIBBLE, SEAN')).toBeGreaterThan(0.7)
+    expect(rosterMatchScore('OSPINA, SIDONIE', 'ON OSPINA, SIDONIE')).toBeGreaterThan(0.7)
+    expect(rosterMatchScore('OSPINA, SIDONIE', 'LOSPNA, SIDONE AN')).toBeGreaterThan(0.58)
+    expect(rosterMatchScore('ALZAMORA, ARACELLY M', 'SC SE ALZAMORA, ARAGELLY')).toBeGreaterThan(0.7)
+    expect(rosterMatchScore('ALZAMORA, ARACELLY M', 'BER A SALSA ALZAMORA, ARACELLY M')).toBeGreaterThan(
+      0.7,
+    )
+    expect(rosterMatchScore('GRIGGS, JANE H', 'I TY GRIGGS, JANE')).toBeGreaterThan(0.7)
+    expect(rosterMatchScore('PAYNE, STEPHEN D', 'ACU. PAYNE, STEPHEND A')).toBeGreaterThan(0.65)
+    expect(rosterMatchScore('RAINSFORD, MELISSA N', 'BSS.Y RAINSFORD, MELISSA')).toBeGreaterThan(0.7)
+    expect(rosterMatchScore('SANCHEZ, CECILIA', 'DO SEO SUED SANCHEZ, CECILIA')).toBeGreaterThan(0.7)
+  })
+
   it('does not attach junk OCR to an unrelated person', () => {
     expect(rosterMatchScore('BUCKLEY, CALEB J', 'PUODEV, EAESS')).toBeLessThan(0.5)
     expect(rosterMatchScore('CONE, ARI M', 'CREE, RTE')).toBeLessThan(0.58)
+    expect(rosterMatchScore('DIBBLE, SEAN', 'MOSES, GATE')).toBeLessThan(0.58)
+    expect(rosterMatchScore('HOBBS, BAILEE', 'SAER, OO')).toBeLessThan(0.58)
   })
 })
 
@@ -44,6 +60,27 @@ MLLER, WENDYW 0 N XXX-XX-2106 T DHMO $0.00 08/2026 MEDICAL $2216.00
     expect(rows[2].name).toBe('WINFIELD, JONATHAN F')
     expect(rows[2].flags).toContain('Not found on this invoice')
     expect(rows[2].medicalCurrentCharge).toBeNull()
+  })
+
+  it('fills the roster from OCR names with leading junk and hides those as unmatched', () => {
+    const ocr = parseMembershipRows(
+      `
+EE DIBBLE, SEAN 1 N XXX-XX-6718 E A DHMO $972.00 $0.00 $972.00
+I TY GRIGGS, JANE 4 N XXX-XX-9296 ESD A DHMO $1,520.00 $0.00 $1,520.00
+DO SEO SUED SANCHEZ, CECILIA 1 N XXX-XX-8926 E A DHMO $1,512.00 $0.00 $1,512.00
+MOSES, GATE 1 N XXX-XX-0000 E A DHMO $676.00 $0.00 $676.00
+`,
+      3,
+    )
+    const roster = ['DIBBLE, SEAN', 'GRIGGS, JANE H', 'SANCHEZ, CECILIA', 'COWHAM, ANGELA']
+    const rows = applyMemberRoster(roster, ocr)
+    expect(rows.find((r) => r.name === 'DIBBLE, SEAN')?.medicalCurrentCharge).toBe(972)
+    expect(rows.find((r) => r.name === 'GRIGGS, JANE H')?.medicalCurrentCharge).toBe(1520)
+    expect(rows.find((r) => r.name === 'SANCHEZ, CECILIA')?.medicalCurrentCharge).toBe(1512)
+    expect(rows.find((r) => r.name === 'COWHAM, ANGELA')?.flags).toContain('Not found on this invoice')
+    const leftover = leftoverOcrAfterFill(rows, unusedOcrRows(roster, ocr))
+    expect(leftover.some((r) => /DIBBLE|GRIGGS|SANCHEZ/.test(r.name))).toBe(false)
+    expect(leftover.some((r) => /MOSES/.test(r.name))).toBe(true)
   })
 
   it('emits one row per roster name even when OCR finds nobody', () => {

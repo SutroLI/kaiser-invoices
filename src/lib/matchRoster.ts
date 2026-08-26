@@ -27,6 +27,14 @@ function ratio(a: string, b: string): number {
   return 1 - levenshtein(a, b) / Math.max(a.length, b.length)
 }
 
+function nameWords(value: string): string[] {
+  return value
+    .toUpperCase()
+    .replace(/[._]/g, ' ')
+    .split(/[^A-Z]+/)
+    .filter((w) => w.length >= 2)
+}
+
 function splitLastFirst(name: string): { last: string; first: string } {
   const cleaned = name.toUpperCase().replace(/[._]/g, ' ').trim()
   const comma = cleaned.indexOf(',')
@@ -36,13 +44,44 @@ function splitLastFirst(name: string): { last: string; first: string } {
   return { last: letters(cleaned), first: '' }
 }
 
+/** Last-name guesses from noisy OCR: "EE DIBBLE, SEAN" → DIBBLE, EEDIBBLE. */
+function ocrLastNameCandidates(ocrName: string): string[] {
+  const cleaned = ocrName.toUpperCase().replace(/[._]/g, ' ').trim()
+  const comma = cleaned.indexOf(',')
+  const before = comma >= 0 ? cleaned.slice(0, comma) : cleaned
+  const words = nameWords(before)
+  const out: string[] = []
+  if (words.length > 0) out.push(words[words.length - 1])
+  if (words.length >= 2) out.push(words.slice(-2).join(''))
+  out.push(letters(before))
+  return [...new Set(out.filter((w) => w.length >= 2))]
+}
+
+function lastNameScore(rosterLast: string, ocrName: string): number {
+  const oAll = letters(ocrName)
+  if (rosterLast.length < 3 || oAll.length < 3) return 0
+  let best = 0
+  if (rosterLast.length >= 4 && oAll.includes(rosterLast)) best = Math.max(best, 0.92)
+  for (const oLast of ocrLastNameCandidates(ocrName)) {
+    best = Math.max(best, ratio(rosterLast, oLast))
+    if (
+      rosterLast.length >= 4 &&
+      (oLast.includes(rosterLast) || (rosterLast.includes(oLast) && oLast.length >= 5))
+    ) {
+      best = Math.max(best, 0.9)
+    }
+    if (rosterLast.length >= 5 && oLast.length >= 4) {
+      if (rosterLast.startsWith(oLast) || oLast.startsWith(rosterLast.slice(0, 5))) {
+        best = Math.max(best, 0.82)
+      }
+    }
+  }
+  return best
+}
+
 /** How close an OCR token is to the roster last name. Used to find a skipped row. */
 export function lastNameHintScore(rosterName: string, token: string): number {
-  const last = splitLastFirst(rosterName).last
-  const t = letters(token)
-  if (last.length < 4 || t.length < 3) return 0
-  if (t.includes(last) || (last.includes(t) && t.length >= 5)) return 0.92
-  return ratio(last, t)
+  return lastNameScore(splitLastFirst(rosterName).last, token)
 }
 
 /** How well an OCR name matches a known roster name. 0–1. */
@@ -53,16 +92,10 @@ export function rosterMatchScore(rosterName: string, ocrName: string): number {
   const oAll = letters(ocrName)
   if (rAll.length < 4 || oAll.length < 3) return 0
 
-  let last = ratio(r.last, o.last)
-  if (r.last.length >= 4 && (oAll.includes(r.last) || rAll.includes(o.last) && o.last.length >= 5)) {
-    last = Math.max(last, 0.9)
-  }
+  let last = lastNameScore(r.last, ocrName)
   if (o.first.length === 0 && r.last.length >= 4) {
     if (oAll.startsWith(r.last) || oAll.includes(r.last)) last = Math.max(last, 0.94)
     last = Math.max(last, ratio(r.last, oAll.slice(0, r.last.length)))
-  }
-  if (r.last.length >= 5 && o.last.length >= 4) {
-    if (r.last.startsWith(o.last) || o.last.startsWith(r.last.slice(0, 5))) last = Math.max(last, 0.82)
   }
   const firstLen = Math.min(8, Math.max(r.first.length, o.first.length, 1))
   const first = ratio(r.first.slice(0, firstLen), o.first.slice(0, firstLen))
@@ -72,18 +105,30 @@ export function rosterMatchScore(rosterName: string, ocrName: string): number {
 
 const MATCH_THRESHOLD = 0.58
 
+function ocrRowQuality(row: MemberRow): number {
+  return (
+    (row.medicalCurrentCharge != null ? 8 : 0) +
+    (row.coverage ? 2 : 0) +
+    (row.status ? 2 : 0) +
+    (row.medicalPlan ? 2 : 0) +
+    (row.familyCount != null ? 1 : 0)
+  )
+}
+
 export function assignRosterMatches(
   roster: string[],
   ocrRows: MemberRow[],
 ): { matched: Map<number, MemberRow>; unmatchedOcr: number } {
-  const candidates: Array<{ ri: number; oi: number; score: number }> = []
+  const candidates: Array<{ ri: number; oi: number; score: number; quality: number }> = []
   for (let ri = 0; ri < roster.length; ri++) {
     for (let oi = 0; oi < ocrRows.length; oi++) {
       const score = rosterMatchScore(roster[ri], ocrRows[oi].name)
-      if (score >= MATCH_THRESHOLD) candidates.push({ ri, oi, score })
+      if (score >= MATCH_THRESHOLD) {
+        candidates.push({ ri, oi, score, quality: ocrRowQuality(ocrRows[oi]) })
+      }
     }
   }
-  candidates.sort((a, b) => b.score - a.score)
+  candidates.sort((a, b) => b.score - a.score || b.quality - a.quality)
 
   const usedRoster = new Set<number>()
   const usedOcr = new Set<number>()
@@ -109,7 +154,14 @@ export function ignoredOcrWarning(rows: MemberRow[]): string | null {
 
 export function leftoverOcrAfterFill(members: MemberRow[], leftover: MemberRow[]): MemberRow[] {
   const used = new Set(members.map((m) => m.ocrName).filter(Boolean))
-  return leftover.filter((row) => !used.has(row.name))
+  return leftover.filter((row) => {
+    if (used.has(row.name)) return false
+    return !members.some(
+      (m) =>
+        rosterMatchScore(m.name, row.name) >= MATCH_THRESHOLD ||
+        lastNameHintScore(m.name, row.name) >= 0.88,
+    )
+  })
 }
 
 export function isMissingOnInvoice(row: MemberRow): boolean {

@@ -248,6 +248,17 @@ describe('OCR of a scanned Membership Detail table', () => {
     expect(hosler?.medicalCurrentCharge).toBe(1800)
   })
 
+  it('does not fuse two subscriber rows when an amount is split across lines', () => {
+    const rows = parseMembershipRows(
+      `HOSLER, JACOB H 5 N XXX-XX-0176 ESD A DHMO $1,
+800.00 $0.00 $1,800.00
+HOUGHTON, DAPHNE E 0 N XXX-XX-0765 T DHMO $0.00`,
+      7,
+    )
+    expect(rows.find((r) => /HOUGHTON/.test(r.name))).toBeTruthy()
+    expect(rows.find((r) => /HOSLER/.test(r.name))).toBeTruthy()
+  })
+
   it('parses SCHILLER and SARRADET from spaced OCR lines', () => {
     const rows = parseMembershipRows(
       `SCHILLER, MINDY 3 N XXX-XX-3971 ED A DHMO $917.00 $0.00 $917.00

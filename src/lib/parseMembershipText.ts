@@ -16,12 +16,12 @@ function normalizeWhitespace(text: string): string {
     .trim()
 }
 
-/** OCR often splits `$1,800.00` into `$1 , 800.00` or `$783 .00`. */
+/** OCR often splits `$1,800.00` into `$1 , 800.00` or `$783 .00`. Do not use `\s` — it would eat newlines and fuse two rows. */
 export function glueSpacedMoney(text: string): string {
   return text
-    .replace(/\$\s+/g, '$')
-    .replace(/(\d)\s*,\s*(\d)/g, '$1,$2')
-    .replace(/(\d)\s+\.\s*(\d{2})\b/g, '$1.$2')
+    .replace(/\$[ \t]+/g, '$')
+    .replace(/(\d)[ \t]*,[ \t]*(\d)/g, '$1,$2')
+    .replace(/(\d)[ \t]+\.[ \t]*(\d{2})\b/g, '$1.$2')
 }
 
 export function cleanOcrLine(line: string): string {
@@ -195,14 +195,7 @@ function matchPlan(token: string): string | null {
   const exact = (MEDICAL_PLANS as readonly string[]).find((p) => p.replace(/\s+/g, '') === t)
   if (exact) return exact
   const hits = ['D', 'H', 'M', 'O'].filter((c) => t.includes(c)).length
-  // MINDY/ADAM have D+M but are names, not DHMO OCR. Need H, leading D, or an O.
-  if (
-    t !== 'MEDICAL' &&
-    t.length >= 3 &&
-    t.length <= 5 &&
-    t.includes('M') &&
-    (t.includes('DH') || t.includes('HM') || t.startsWith('D') || (t.includes('O') && hits >= 2))
-  ) {
+  if (t !== 'MEDICAL' && t.length >= 3 && t.length <= 5 && hits >= 2 && t.includes('M')) {
     return 'DHMO'
   }
   if (t.length >= 4) {
@@ -404,7 +397,21 @@ function isNameStopToken(token: string): boolean {
   if (extractMoney(token) != null) return true
   if (PERIOD_RE.test(token)) return true
   const letters = token.replace(/[^A-Za-z]/g, '')
-  if (letters.length >= 2 && (matchCoverage(token) || matchPlan(token))) return true
+  if (letters.length >= 2 && matchCoverage(token)) return true
+  if (letters.length >= 2 && matchPlan(token)) {
+    const t = letters.toUpperCase()
+    // MINDY matches the loose DHMO heuristic (D+M) but is a first name, not a plan.
+    if (
+      looksLikeNameWord(token, 4) &&
+      !t.includes('O') &&
+      !t.startsWith('DH') &&
+      t !== 'HMO' &&
+      t !== 'DHMO'
+    ) {
+      return false
+    }
+    return true
+  }
   return false
 }
 
@@ -599,9 +606,9 @@ export function hydrateMemberRow(
  * Subtotals and empty COBRA / N/A groups are skipped.
  */
 export function parseMembershipRows(text: string, page: number): MemberRow[] {
-  const lines = glueSpacedMoney(normalizeWhitespace(text))
+  const lines = normalizeWhitespace(text)
     .split('\n')
-    .map((l) => l.trim())
+    .map((l) => glueSpacedMoney(l.trim()))
     .filter(Boolean)
     .filter((l) => !SKIP_LINE_RE.test(l))
 
