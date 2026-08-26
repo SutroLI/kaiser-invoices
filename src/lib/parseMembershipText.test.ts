@@ -365,4 +365,41 @@ describe('invoicesToCsv', () => {
     expect(csv).not.toContain('BUCKLEY, CALEB J')
     expect(csv).toContain('CONE, ARI M')
   })
+
+  it('omits roster people who were not found on the invoice', () => {
+    const members = parseMembershipRows(PAGE3, 3)
+    members.push({
+      ...members[0],
+      rowIndex: 99,
+      name: 'COWHAM, ANGELA',
+      flags: ['Not found on this invoice'],
+      medicalCurrentCharge: null,
+      excluded: false,
+    })
+    const invoice: ProcessedKaiserInvoice = {
+      fileName: 'SWSA- Kaiser SEP26.pdf',
+      meta: {
+        customerName: '',
+        billingId: '',
+        statementId: '',
+        invoiceDate: '',
+        billPeriod: '',
+        dueDate: '',
+        totalAmountDue: null,
+      },
+      members,
+      pageCount: 3,
+      membershipPages: [3],
+      usedOcr: false,
+      errors: [],
+      warnings: [],
+      debugPages: [],
+      completeness: null,
+      preprocess: 'contrast',
+      unmatchedOcr: [],
+    }
+    const csv = invoicesToCsv([invoice])
+    expect(csv).not.toContain('COWHAM, ANGELA')
+    expect(csv).toContain('BUCKLEY, CALEB J')
+  })
 })

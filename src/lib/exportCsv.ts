@@ -1,4 +1,5 @@
 import type { ProcessedKaiserInvoice } from '../types'
+import { NOT_FOUND_FLAG } from './matchRoster'
 
 function escapeCsv(value: string | number | null | undefined): string {
   if (value == null) return ''
@@ -44,6 +45,7 @@ export function invoicesToCsv(invoices: ProcessedKaiserInvoice[]): string {
     }
     for (const m of inv.members) {
       if (m.excluded) continue
+      if (m.flags.includes(NOT_FOUND_FLAG)) continue
       rows.push(
         [
           m.name,

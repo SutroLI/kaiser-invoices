@@ -3,7 +3,7 @@ import BrandBars, { BrandLogo } from './BrandBars'
 import './App.css'
 import { COVERAGE_CODES, MEDICAL_PLANS, STATUS_CODES, coverageLabel, statusLabel } from './lib/codes'
 import { downloadCsv } from './lib/exportCsv'
-import { ADDED_ROW_FLAG, NOT_FOUND_FLAG, ignoredOcrWarning } from './lib/matchRoster'
+import { ADDED_ROW_FLAG, NOT_FOUND_FLAG, ignoredOcrWarning, isMissingOnInvoice } from './lib/matchRoster'
 import { DEFAULT_MEMBER_ROSTER, formatRosterName } from './lib/memberRoster'
 import { finishOcr, parseKaiserPdf } from './lib/parseKaiserPdf'
 import { hydrateMemberRow, parseMoney, formatMoney } from './lib/parseMembershipText'
@@ -264,7 +264,12 @@ function App() {
   )
 
   const allMembers = useMemo(
-    () => invoices.flatMap((inv) => inv.members.filter((m) => !m.excluded).map((m) => ({ inv, m }))),
+    () =>
+      invoices.flatMap((inv) =>
+        inv.members
+          .filter((m) => !m.excluded && !isMissingOnInvoice(m))
+          .map((m) => ({ inv, m })),
+      ),
     [invoices],
   )
 
