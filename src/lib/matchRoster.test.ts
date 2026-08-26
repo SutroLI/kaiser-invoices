@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseMembershipRows } from './parseMembershipText'
-import { applyMemberRoster, rosterMatchScore } from './matchRoster'
+import { applyMemberRoster, ignoredOcrWarning, rosterMatchScore } from './matchRoster'
 import { formatRosterName, parseMemberRoster } from './memberRoster'
 
 describe('rosterMatchScore', () => {
@@ -80,5 +80,18 @@ a.pdf,September 2026,"CONE, ARI M",4
       'ROOS, KAREN',
       'WINFIELD, JONATHAN F',
     ])
+  })
+})
+
+describe('ignoredOcrWarning', () => {
+  it('names the OCR rows that did not match the list', () => {
+    expect(
+      ignoredOcrWarning([
+        { name: 'PUODEV, EAESS' } as never,
+        { name: 'CREE, RTE' } as never,
+      ]),
+    ).toBe(
+      '2 OCR rows did not match the member list and were ignored: PUODEV, EAESS; CREE, RTE',
+    )
   })
 })

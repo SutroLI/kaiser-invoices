@@ -3,7 +3,7 @@ import BrandBars, { BrandLogo } from './BrandBars'
 import './App.css'
 import { COVERAGE_CODES, MEDICAL_PLANS, STATUS_CODES, coverageLabel, statusLabel } from './lib/codes'
 import { downloadCsv } from './lib/exportCsv'
-import { NOT_FOUND_FLAG } from './lib/matchRoster'
+import { ADDED_ROW_FLAG, NOT_FOUND_FLAG, ignoredOcrWarning } from './lib/matchRoster'
 import { DEFAULT_MEMBER_ROSTER, formatRosterName } from './lib/memberRoster'
 import { finishOcr, parseKaiserPdf } from './lib/parseKaiserPdf'
 import { hydrateMemberRow, parseMoney, formatMoney } from './lib/parseMembershipText'
@@ -32,7 +32,7 @@ function persistRoster(names: string[]): void {
 }
 
 type MemberPatch = Partial<
-  Pick<MemberRow, 'familyCount' | 'coverage' | 'status' | 'medicalPlan' | 'medicalCurrentCharge'>
+  Pick<MemberRow, 'name' | 'familyCount' | 'coverage' | 'status' | 'medicalPlan' | 'medicalCurrentCharge'>
 >
 
 function flagsAfterEdit(row: MemberRow): string[] {
@@ -59,6 +59,8 @@ function App() {
   const [rosterEditing, setRosterEditing] = useState(false)
   const [newMember, setNewMember] = useState('')
   const [rosterError, setRosterError] = useState('')
+  const [blankRowName, setBlankRowName] = useState('')
+  const [blankRowError, setBlankRowError] = useState('')
 
   const applyRoster = useCallback((names: string[]) => {
     const sorted = [...names].sort((a, b) => a.localeCompare(b))
@@ -99,14 +101,14 @@ function App() {
   )
 
   const patchMember = useCallback(
-    (fileName: string, rowIndex: number, name: string, patch: MemberPatch) => {
+    (fileName: string, rowIndex: number, patch: MemberPatch) => {
       setInvoices((prev) =>
         prev.map((inv) => {
           if (inv.fileName !== fileName) return inv
           return {
             ...inv,
             members: inv.members.map((m) => {
-              if (m.rowIndex !== rowIndex || m.name !== name) return m
+              if (m.rowIndex !== rowIndex) return m
               const { nameField: _n, amountField: _a, ...rest } = m
               const next = hydrateMemberRow({ ...rest, ...patch })
               return { ...next, flags: flagsAfterEdit(next) }
@@ -117,6 +119,76 @@ function App() {
     },
     [],
   )
+
+  const addUnmatchedRow = useCallback(
+    (fileName: string, ocrRow: MemberRow) => {
+      setInvoices((prev) =>
+        prev.map((inv) => {
+          if (inv.fileName !== fileName) return inv
+          const name =
+            formatRosterName(ocrRow.name) ?? ocrRow.name.replace(/\s+/g, ' ').trim().toUpperCase()
+          const rowIndex = Math.max(0, ...inv.members.map((m) => m.rowIndex)) + 1
+          const { nameField: _n, amountField: _a, ...rest } = ocrRow
+          const added = hydrateMemberRow({
+            ...rest,
+            rowIndex,
+            name,
+            ocrName: ocrRow.name,
+            flags: [...ocrRow.flags.filter((f) => f !== NOT_FOUND_FLAG), ADDED_ROW_FLAG],
+          })
+          const unmatchedOcr = (inv.unmatchedOcr ?? []).filter(
+            (r) => r.rowIndex !== ocrRow.rowIndex || r.name !== ocrRow.name,
+          )
+          const ignored = ignoredOcrWarning(unmatchedOcr)
+          return {
+            ...inv,
+            members: [...inv.members, added],
+            unmatchedOcr,
+            warnings: [
+              ...inv.warnings.filter((w) => !/did not match the member list/i.test(w)),
+              ...(ignored ? [ignored] : []),
+            ],
+          }
+        }),
+      )
+      const official = formatRosterName(ocrRow.name)
+      if (official && !roster.includes(official)) applyRoster([...roster, official])
+    },
+    [applyRoster, roster],
+  )
+
+  const addBlankRow = useCallback(() => {
+    const target = invoices[invoices.length - 1]
+    if (!target) return
+    const name = formatRosterName(blankRowName)
+    if (!name) {
+      setBlankRowError('Use LAST, FIRST (middle initial optional).')
+      return
+    }
+    setBlankRowError('')
+    setBlankRowName('')
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        if (inv.fileName !== target.fileName) return inv
+        if (inv.members.some((m) => m.name === name)) return inv
+        const rowIndex = Math.max(0, ...inv.members.map((m) => m.rowIndex)) + 1
+        const added = hydrateMemberRow({
+          rowIndex,
+          name,
+          familyCount: null,
+          coverage: '',
+          status: '',
+          medicalPlan: '',
+          medicalCurrentCharge: null,
+          page: 0,
+          flags: [ADDED_ROW_FLAG],
+          ocrName: '',
+        })
+        return { ...inv, members: [...inv.members, added] }
+      }),
+    )
+    if (!roster.includes(name)) applyRoster([...roster, name])
+  }, [applyRoster, blankRowName, invoices, roster])
 
   const processPdfs = useCallback(async (pdfFiles: File[], rosterNames: string[]) => {
     if (pdfFiles.length === 0) return
@@ -147,6 +219,7 @@ function App() {
             debugPages: [],
             completeness: null,
             preprocess: 'contrast',
+            unmatchedOcr: [],
           })
         }
       }
@@ -219,7 +292,9 @@ function App() {
 
   const matchWarnings = invoices
     .flatMap((inv) => inv.warnings)
-    .filter((w) => /member list|not found on this invoice|did not match/i.test(w))
+    .filter((w) => /not found on this invoice/i.test(w))
+
+  const unmatchedByFile = invoices.filter((inv) => (inv.unmatchedOcr ?? []).length > 0)
 
   return (
     <div className="page">
@@ -238,8 +313,9 @@ function App() {
           <div className="workflow-panel">
             <div className="panel-card panel-card-instructions">
               <p className="panel-intro">
-                Keep the employee list here. Drop a Kaiser PDF each month — OCR fills what it can.
-                It will miss cells. Click any dash and type what’s on the invoice, then export.
+                Drop a Kaiser PDF each month. The first read downloads PaddleOCR models in the
+                browser; after that they stay cached. OCR fills what it can and flags missing cells
+                so you can finish from the invoice — then export.
               </p>
             </div>
 
@@ -417,14 +493,43 @@ function App() {
           </div>
 
           <p className="workflow-footer">
-            Files stay in your browser. Click empty cells to type from the invoice. Export when the table looks right.
+            Files stay in browser, no memory or backend. Click empty cells to add missing info from the invoice. Export when the table looks right.
           </p>
         </div>
 
-        {matchWarnings.length > 0 && invoices.length > 0 && (
+        {(matchWarnings.length > 0 || unmatchedByFile.length > 0) && invoices.length > 0 && (
           <section className="completeness-banner" role="status">
             {matchWarnings.map((note) => (
               <p key={note}>{note}</p>
+            ))}
+            {unmatchedByFile.map((inv) => (
+              <div key={`unmatched-${inv.fileName}`} className="unmatched-ocr">
+                <p>
+                  {inv.unmatchedOcr.length} OCR row
+                  {inv.unmatchedOcr.length === 1 ? '' : 's'} did not match the member list and{' '}
+                  {inv.unmatchedOcr.length === 1 ? 'was' : 'were'} ignored
+                  {inv.unmatchedOcr.length === 1 ? '' : ':'}
+                </p>
+                <ul className="unmatched-ocr-list">
+                  {inv.unmatchedOcr.map((row) => (
+                    <li key={`${inv.fileName}:${row.rowIndex}:${row.name}`}>
+                      <span>
+                        {row.name}
+                        {row.medicalCurrentCharge != null
+                          ? ` · ${formatMoney(row.medicalCurrentCharge)}`
+                          : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => addUnmatchedRow(inv.fileName, row)}
+                      >
+                        Add row
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
           </section>
         )}
@@ -467,8 +572,7 @@ function App() {
           <section className="results card result-card">
             <h2 className="result-card-title">Click any empty cell and type what’s on the invoice</h2>
             <p className="result-card-hint">
-              Yellow cells are missing. Names come from the list above. Export CSV when the table
-              looks right.
+              Yellow cells still need a look. Finish those from the invoice, then export.
             </p>
             <div className="table-wrap table-wrap-results">
               <table className="results-table">
@@ -495,8 +599,9 @@ function App() {
                     </tr>
                   )}
                   {displayed.map(({ inv, m }) => {
-                    const key = `${inv.fileName}:${m.rowIndex}:${m.name}`
+                    const key = `${inv.fileName}:${m.rowIndex}`
                     const flagged = m.flags.length > 0
+                    const added = m.flags.includes(ADDED_ROW_FLAG)
                     const plans = m.medicalPlan && !(MEDICAL_PLANS as readonly string[]).includes(m.medicalPlan)
                       ? [m.medicalPlan, ...MEDICAL_PLANS]
                       : MEDICAL_PLANS
@@ -504,7 +609,30 @@ function App() {
                     return (
                       <tr key={key} className={flagged ? 'row-flagged' : undefined}>
                         <td>
-                          <div>{m.name}</div>
+                          {added ? (
+                            <input
+                              className="field-input"
+                              defaultValue={m.name}
+                              key={`name:${m.name}`}
+                              aria-label={`Name for ${m.name}`}
+                              onBlur={(e) => {
+                                const next =
+                                  formatRosterName(e.target.value) ??
+                                  e.target.value.replace(/\s+/g, ' ').trim().toUpperCase()
+                                if (!next || next === m.name) {
+                                  e.target.value = m.name
+                                  return
+                                }
+                                patchMember(inv.fileName, m.rowIndex, { name: next })
+                                const official = formatRosterName(next)
+                                if (official && !roster.includes(official)) {
+                                  applyRoster([...roster, official])
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div>{m.name}</div>
+                          )}
                           {m.ocrName && m.ocrName !== m.name ? (
                             <div className="ocr-name-note">Invoice read: {m.ocrName}</div>
                           ) : null}
@@ -531,7 +659,7 @@ function App() {
                                 e.target.value = m.familyCount == null ? '' : String(m.familyCount)
                                 return
                               }
-                              patchMember(inv.fileName, m.rowIndex, m.name, { familyCount: value })
+                              patchMember(inv.fileName, m.rowIndex, { familyCount: value })
                             }}
                           />
                         </td>
@@ -542,7 +670,7 @@ function App() {
                             aria-label={`Coverage for ${m.name}`}
                             title={coverageLabel(m.coverage)}
                             onChange={(e) =>
-                              patchMember(inv.fileName, m.rowIndex, m.name, {
+                              patchMember(inv.fileName, m.rowIndex, {
                                 coverage: e.target.value,
                               })
                             }
@@ -562,7 +690,7 @@ function App() {
                             aria-label={`Status for ${m.name}`}
                             title={statusLabel(m.status)}
                             onChange={(e) =>
-                              patchMember(inv.fileName, m.rowIndex, m.name, {
+                              patchMember(inv.fileName, m.rowIndex, {
                                 status: e.target.value,
                               })
                             }
@@ -581,7 +709,7 @@ function App() {
                             value={m.medicalPlan}
                             aria-label={`Medical plan for ${m.name}`}
                             onChange={(e) =>
-                              patchMember(inv.fileName, m.rowIndex, m.name, {
+                              patchMember(inv.fileName, m.rowIndex, {
                                 medicalPlan: e.target.value,
                               })
                             }
@@ -612,7 +740,7 @@ function App() {
                                   m.medicalCurrentCharge == null ? '' : String(m.medicalCurrentCharge)
                                 return
                               }
-                              patchMember(inv.fileName, m.rowIndex, m.name, {
+                              patchMember(inv.fileName, m.rowIndex, {
                                 medicalCurrentCharge: next,
                               })
                             }}
@@ -637,18 +765,37 @@ function App() {
                         </td>
                       </tr>
                     ))}
+                  <tr className="add-missing-row">
+                    <td colSpan={8}>
+                      <form
+                        className="add-missing-form"
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          addBlankRow()
+                        }}
+                      >
+                        <input
+                          className="field-input"
+                          value={blankRowName}
+                          onChange={(e) => {
+                            setBlankRowName(e.target.value)
+                            if (blankRowError) setBlankRowError('')
+                          }}
+                          placeholder="LAST, FIRST"
+                          aria-label="Name for missing row"
+                        />
+                        <button type="submit" className="btn secondary">
+                          Add missing row
+                        </button>
+                        {blankRowError ? <span className="roster-error">{blankRowError}</span> : null}
+                      </form>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </section>
         )}
-
-        <footer className="footer workflow-footer">
-          <p>
-            Membership Detail tables can span pages — a leftover subscriber on the following page
-            is included. Retro-activity continuation lines are not separate people.
-          </p>
-        </footer>
       </div>
     </div>
   )

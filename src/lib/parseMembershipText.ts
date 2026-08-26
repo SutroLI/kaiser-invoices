@@ -16,6 +16,14 @@ function normalizeWhitespace(text: string): string {
     .trim()
 }
 
+/** PaddleOCR often splits `$1,800.00` into `$1 , 800.00` or `$783 .00`. */
+export function glueSpacedMoney(text: string): string {
+  return text
+    .replace(/\$\s+/g, '$')
+    .replace(/(\d)\s*,\s*(\d)/g, '$1,$2')
+    .replace(/(\d)\s+\.\s*(\d{2})\b/g, '$1.$2')
+}
+
 export function cleanOcrLine(line: string): string {
   return line
     .replace(/[[\]{}()]/g, ' ')
@@ -86,7 +94,7 @@ export function extractMoneyFromLine(line: string): number[] {
     found.push(n)
   }
 
-  const t = line.replace(/[–—]/g, '-').replace(/~~+/g, ' ')
+  const t = glueSpacedMoney(line.replace(/[–—]/g, '-').replace(/~~+/g, ' '))
 
   for (const m of t.matchAll(/-?\$\s*\d[\d,.]*/g)) {
     push(extractMoney(m[0]))
@@ -187,7 +195,14 @@ function matchPlan(token: string): string | null {
   const exact = (MEDICAL_PLANS as readonly string[]).find((p) => p.replace(/\s+/g, '') === t)
   if (exact) return exact
   const hits = ['D', 'H', 'M', 'O'].filter((c) => t.includes(c)).length
-  if (t !== 'MEDICAL' && t.length >= 3 && t.length <= 5 && hits >= 2 && t.includes('M')) {
+  // MINDY/ADAM have D+M but are names, not DHMO OCR. Need H, leading D, or an O.
+  if (
+    t !== 'MEDICAL' &&
+    t.length >= 3 &&
+    t.length <= 5 &&
+    t.includes('M') &&
+    (t.includes('DH') || t.includes('HM') || t.startsWith('D') || (t.includes('O') && hits >= 2))
+  ) {
     return 'DHMO'
   }
   if (t.length >= 4) {
@@ -584,7 +599,7 @@ export function hydrateMemberRow(
  * Subtotals and empty COBRA / N/A groups are skipped.
  */
 export function parseMembershipRows(text: string, page: number): MemberRow[] {
-  const lines = normalizeWhitespace(text)
+  const lines = glueSpacedMoney(normalizeWhitespace(text))
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)

@@ -92,4 +92,5 @@ export interface ProcessedKaiserInvoice {
   debugPages: OcrDebugPage[]
   completeness: CompletenessReport | null
   preprocess: PreprocessMode
+  unmatchedOcr: MemberRow[]
 }

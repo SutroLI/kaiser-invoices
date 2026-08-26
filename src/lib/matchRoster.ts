@@ -98,6 +98,19 @@ export function assignRosterMatches(
 }
 
 export const NOT_FOUND_FLAG = 'Not found on this invoice'
+export const ADDED_ROW_FLAG = 'Added row'
+
+export function ignoredOcrWarning(rows: MemberRow[]): string | null {
+  if (rows.length === 0) return null
+  const names = rows.map((r) => r.name).join('; ')
+  const n = rows.length
+  return `${n} OCR row${n === 1 ? '' : 's'} did not match the member list and ${n === 1 ? 'was' : 'were'} ignored: ${names}`
+}
+
+export function leftoverOcrAfterFill(members: MemberRow[], leftover: MemberRow[]): MemberRow[] {
+  const used = new Set(members.map((m) => m.ocrName).filter(Boolean))
+  return leftover.filter((row) => !used.has(row.name))
+}
 
 export function isMissingOnInvoice(row: MemberRow): boolean {
   return row.flags.includes(NOT_FOUND_FLAG)

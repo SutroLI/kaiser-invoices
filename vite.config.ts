@@ -94,9 +94,24 @@ function servePdfjsWasm(): Plugin {
   }
 }
 
+/** ORT wasm is loaded from jsDelivr at runtime — keep the 13–27MB files out of the site bundle. */
+function skipOrtWasm(): Plugin {
+  return {
+    name: 'skip-ort-wasm',
+    generateBundle(_options, bundle) {
+      for (const fileName of Object.keys(bundle)) {
+        if (/ort-wasm.*\.wasm$/i.test(fileName)) delete bundle[fileName]
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), copyOcrAssets(), servePdfjsWasm()],
+  plugins: [react(), copyOcrAssets(), servePdfjsWasm(), skipOrtWasm()],
   base: process.env.GITHUB_PAGES === 'true' ? '/kaiser-invoices/' : '/',
+  optimizeDeps: {
+    exclude: ['onnxruntime-web', 'ppu-paddle-ocr', 'ppu-ocv'],
+  },
   resolve: {
     alias: {
       // createWorker.js always requires the Node adapter; force the browser one.

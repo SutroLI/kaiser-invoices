@@ -15,9 +15,10 @@ import {
 } from './parseMembershipText'
 import {
   applyMemberRoster,
-  assignRosterMatches,
   fillMissingFromLeftover,
+  ignoredOcrWarning,
   isMissingOnInvoice,
+  leftoverOcrAfterFill,
   unusedOcrRows,
 } from './matchRoster'
 import {
@@ -116,6 +117,7 @@ export async function parseKaiserPdf(
     debugPages: [],
     completeness: null,
     preprocess,
+    unmatchedOcr: [],
   }
 
   try {
@@ -192,6 +194,7 @@ export async function parseKaiserPdf(
       tableCanvas: HTMLCanvasElement
       words: OcrWordBox[]
     }> = []
+    let usedTesseractFallback = false
     for (const n of ordered) {
       if (legendPages.has(n)) continue
       const kind: 'main' | 'overflow' = n === firstFull ? 'main' : 'overflow'
@@ -216,6 +219,7 @@ export async function parseKaiserPdf(
               kind,
             )
             tablePasses.push({ page: n, tableCanvas: ocr.tableCanvas, words: ocr.words })
+            if (ocr.engine === 'tesseract') usedTesseractFallback = true
             if (ocr.text.trim()) {
               text = ocr.text
               result.usedOcr = true
@@ -239,6 +243,12 @@ export async function parseKaiserPdf(
       }
     }
 
+    if (usedTesseractFallback) {
+      result.warnings.push(
+        'PaddleOCR did not read this table, so Tesseract was used. Charges may need more typing.',
+      )
+    }
+
     const ocrMembers = mergeMemberLists([result.members]).map((row, i) =>
       hydrateMemberRow({ ...row, rowIndex: i + 1 }),
     )
@@ -246,7 +256,6 @@ export async function parseKaiserPdf(
 
     const roster = (options?.roster ?? []).map((n) => n.trim()).filter(Boolean)
     if (roster.length > 0) {
-      const { unmatchedOcr } = assignRosterMatches(roster, ocrMembers)
       result.members = applyMemberRoster(roster, ocrMembers)
       result.members = fillMissingFromLeftover(result.members, unusedOcrRows(roster, ocrMembers))
 
@@ -301,17 +310,16 @@ export async function parseKaiserPdf(
           'Could not read subscriber lines from this PDF. Showing the employee list with no charges filled in.',
         )
       } else {
-        const missing = stillMissing().length
-        if (missing > 0) {
+        const leftover = unusedOcrRows(roster, ocrMembers)
+        result.unmatchedOcr = leftoverOcrAfterFill(result.members, leftover)
+        const missing = stillMissing()
+        if (missing.length > 0) {
           result.warnings.push(
-            `${missing} member${missing === 1 ? '' : 's'} on the list were not found on this invoice.`,
+            `${missing.length} member${missing.length === 1 ? '' : 's'} on the list were not found on this invoice: ${missing.map((m) => m.name).join('; ')}`,
           )
         }
-        if (unmatchedOcr > 0) {
-          result.warnings.push(
-            `${unmatchedOcr} OCR row${unmatchedOcr === 1 ? '' : 's'} did not match the member list and ${unmatchedOcr === 1 ? 'was' : 'were'} ignored.`,
-          )
-        }
+        const ignored = ignoredOcrWarning(result.unmatchedOcr)
+        if (ignored) result.warnings.push(ignored)
       }
     } else {
       result.warnings.push('Add at least one member to the list before reading an invoice.')
@@ -339,5 +347,6 @@ export async function parseKaiserPdf(
 }
 
 export async function finishOcr(): Promise<void> {
-  await terminateOcrWorker()
+  const { terminatePaddleOcr } = await import('./paddleOcr')
+  await Promise.all([terminateOcrWorker(), terminatePaddleOcr()])
 }

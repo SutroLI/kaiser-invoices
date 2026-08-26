@@ -194,7 +194,8 @@ describe('extractMoneyFromLine', () => {
     expect(extractMoneyFromLine('[CONE ARIM | 4 | esp | A | $2216.00]')).toContain(2216)
     expect(extractMoneyFromLine('[GRAY.MARANNEK | 1 | E | A | $1.24600]')).toContain(1246)
     expect(extractMoneyFromLine('[REYERJOAN | 4 | $1.357.00]')).toContain(1357)
-    expect(extractMoneyFromLine('[HOSLER,JACOBH | 5 | $1,800.00]')).toContain(1800)
+    expect(extractMoneyFromLine('BUCKLEY, CALEBJ 1 N E A DHMO $783 .00 $0.00 $783.00')).toContain(783)
+    expect(extractMoneyFromLine('HOSLER,JACOB H 5 N ESD A DHMO $1 , 800.00 $0.00 $1,800 .00')).toContain(1800)
     expect(extractMoney('$1.24600')).toBe(1246)
     expect(extractMoney('$78300')).toBe(783)
     expect(extractMoney('$1.357')).toBe(1357)
@@ -232,6 +233,29 @@ describe('OCR of a scanned Membership Detail table', () => {
     expect(cone?.medicalCurrentCharge).toBe(2216)
     const withCharge = rows.filter((r) => r.medicalCurrentCharge != null)
     expect(withCharge.length).toBeGreaterThanOrEqual(12)
+  })
+
+  it('parses a PaddleOCR-style row with spaces inside money', () => {
+    const rows = parseMembershipRows(
+      'BUCKLEY, CALEBJ 1 N XXX-XX-5314 E A DHMO $783 .00 $0.00 $783.00\nHOSLER,JACOB H 5 N XXX-XX-0176 ESD A DHMO $1 , 800.00 $0.00 $1,800 .00',
+      7,
+    )
+    const buckley = rows.find((r) => /BUCKLEY/.test(r.name))
+    expect(buckley?.familyCount).toBe(1)
+    expect(buckley?.medicalCurrentCharge).toBe(783)
+    const hosler = rows.find((r) => /HOSLER/.test(r.name))
+    expect(hosler?.familyCount).toBe(5)
+    expect(hosler?.medicalCurrentCharge).toBe(1800)
+  })
+
+  it('parses SCHILLER and SARRADET from Paddle-like lines', () => {
+    const rows = parseMembershipRows(
+      `SCHILLER, MINDY 3 N XXX-XX-3971 ED A DHMO $917.00 $0.00 $917.00
+SARRADET, INA M 1 N XXX-XX-1865 E A DHMO $1,512.00 $0.00 $1,512.00`,
+      7,
+    )
+    expect(rows.find((r) => /SCHILLER/.test(r.name))?.medicalCurrentCharge).toBe(917)
+    expect(rows.find((r) => /SARRADET/.test(r.name))?.medicalCurrentCharge).toBe(1512)
   })
 
   it('recovers subscriber names and the leftover page-4 row', () => {
@@ -289,6 +313,7 @@ describe('invoicesToCsv', () => {
       debugPages: [],
       completeness: null,
       preprocess: 'contrast',
+      unmatchedOcr: [],
     }
     const csv = invoicesToCsv([invoice])
     expect(csv).toContain(
@@ -322,6 +347,7 @@ describe('invoicesToCsv', () => {
       debugPages: [],
       completeness: null,
       preprocess: 'contrast',
+      unmatchedOcr: [],
     }
     const csv = invoicesToCsv([invoice])
     expect(members[0].name).toBe('BUCKLEY, CALEB J')

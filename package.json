@@ -12,7 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "onnxruntime-web": "^1.29.0",
     "pdfjs-dist": "^6.0.227",
+    "ppu-paddle-ocr": "^6.4.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tesseract.js": "^6.0.1"

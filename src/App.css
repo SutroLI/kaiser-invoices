@@ -577,8 +577,43 @@ table {
   font-size: 0.875rem;
 }
 
-.completeness-banner p {
-  margin: 0.2rem 0;
+.unmatched-ocr {
+  margin-top: 0.55rem;
+}
+
+.unmatched-ocr-list {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.unmatched-ocr-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.add-missing-row td {
+  background: #f8fbfd;
+}
+
+.add-missing-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 32rem;
+}
+
+.add-missing-form .field-input {
+  flex: 1;
+  min-width: 12rem;
 }
 
 .field-cell {

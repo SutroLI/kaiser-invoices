@@ -386,22 +386,19 @@ function wordsFromRecognize(data: { words?: OcrWord[] }, yOffset = 0): OcrWordBo
     .filter((w) => w.text)
 }
 
-export async function ocrMembershipTable(
-  canvas: HTMLCanvasElement,
-  onProgress?: (message: string) => void,
-  tableKind: 'main' | 'overflow' = 'main',
-): Promise<{ text: string; words: OcrWordBox[]; tableCanvas: HTMLCanvasElement }> {
-  const ctx = canvas.getContext('2d')
-  const empty = {
-    text: '',
-    words: [] as OcrWordBox[],
-    tableCanvas: canvas,
-  }
-  if (!ctx) return empty
-  const sample = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  if (inkRatio(sample.data) < 0.004) return empty
+export type TableOcrEngine = 'paddle' | 'tesseract'
 
-  const tableCanvas = cropMembershipTable(canvas, tableKind)
+function wordBoxesToOcrWords(words: OcrWordBox[]): OcrWord[] {
+  return words.map((w) => ({
+    text: w.text,
+    bbox: { x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1 },
+  }))
+}
+
+async function ocrMembershipTableTesseract(
+  tableCanvas: HTMLCanvasElement,
+  onProgress?: (message: string) => void,
+): Promise<{ text: string; words: OcrWordBox[] }> {
   const worker = await getWorker()
   await worker.setParameters({
     tessedit_pageseg_mode: '6',
@@ -422,7 +419,54 @@ export async function ocrMembershipTable(
     parts.push(textFromRecognizeData(result.data))
     words.push(...wordsFromRecognize(result.data, ranges[i].top))
   }
-  return { text: mergeOcrBlobs(...parts), words, tableCanvas }
+  return { text: mergeOcrBlobs(...parts), words }
+}
+
+export async function ocrMembershipTable(
+  canvas: HTMLCanvasElement,
+  onProgress?: (message: string) => void,
+  tableKind: 'main' | 'overflow' = 'main',
+): Promise<{
+  text: string
+  words: OcrWordBox[]
+  tableCanvas: HTMLCanvasElement
+  engine: TableOcrEngine
+}> {
+  const ctx = canvas.getContext('2d')
+  const empty = {
+    text: '',
+    words: [] as OcrWordBox[],
+    tableCanvas: canvas,
+    engine: 'tesseract' as const,
+  }
+  if (!ctx) return empty
+  const sample = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  if (inkRatio(sample.data) < 0.004) return empty
+
+  const tableCanvas = cropMembershipTable(canvas, tableKind)
+
+  try {
+    const { normalizePaddleTableText, paddleLooksUseful, paddleOcrCanvas } = await import('./paddleOcr')
+    const paddle = await paddleOcrCanvas(tableCanvas, onProgress)
+    const rebuilt = linesFromOcrWords(wordBoxesToOcrWords(paddle.words))
+    const ranked = [paddle.text, rebuilt]
+      .map((text, i) => {
+        const cleaned = normalizePaddleTableText(text)
+        return { text: cleaned, score: ocrScore(cleaned), i }
+      })
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+    const text = ranked[0]?.text || paddle.text
+    if (paddleLooksUseful(text)) {
+      return { text, words: paddle.words, tableCanvas, engine: 'paddle' }
+    }
+    onProgress?.('PaddleOCR found little text — using Tesseract')
+  } catch (err) {
+    console.warn('PaddleOCR failed; falling back to Tesseract', err)
+    onProgress?.('PaddleOCR failed — using Tesseract')
+  }
+
+  const tess = await ocrMembershipTableTesseract(tableCanvas, onProgress)
+  return { ...tess, tableCanvas, engine: 'tesseract' }
 }
 
 export async function ocrCanvas(
