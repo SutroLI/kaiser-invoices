@@ -137,6 +137,17 @@ BUCKLEY, CALEB J 1 N XXX-XX-5314 E A DHMO $783.00 $0.00 $783.00
     expect(looksLikeFullMembershipTable(PAGE4)).toBe(false)
   })
 
+  it('treats a full grid as the main table even if locate only read the first few names', () => {
+    const locate = `Membership Detail for Group ID 647388 Bill Group ID 0001
+Current coverage month 06/01/2026 - 06/30/2026 for Subgroup ID 1
+Name Family Count Medicare assignment
+ALZAMORA, ARACELLY M 1 N XXX-XX-3220 E A DHMO $800.00
+BUCKLEY, CALEB J 1 N XXX-XX-5314 E A DHMO $783.00
+CONE, ARI M 4 N XXX-XX-1262 ESD A DHMO $2,216.00`
+    expect(looksLikeOverflowMembershipPage(locate)).toBe(false)
+    expect(looksLikeFullMembershipTable(locate)).toBe(true)
+  })
+
   it('does not swallow coverage codes into the first name', () => {
     const rows = parseMembershipRows(
       'HOBBS, BAILEE OOTXCOZES ED A DHMO $876.00 $0.00 $876.00',

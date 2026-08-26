@@ -350,19 +350,21 @@ function subscriberNameHits(text: string): number {
 /** Printed page 3 — the long grid. */
 export function looksLikeFullMembershipTable(text: string): boolean {
   if (isLegendText(text)) return false
+  if (looksLikeOverflowMembershipPage(text)) return false
   const names = subscriberNameHits(text)
   if (names >= 8) return true
-  return isMembershipDetailText(text) && names >= 5 && !looksLikeOverflowMembershipPage(text)
+  // Low-res locate often reads the heading + only the first few rows.
+  return isMembershipDetailText(text)
 }
 
 /** Printed page 4 — leftover subscriber + subtotals / empty COBRA group. */
 export function looksLikeOverflowMembershipPage(text: string): boolean {
   const names = subscriberNameHits(text)
-  if (names >= 5) return false
+  if (names >= 8) return false
   if (/Bill Group ID\s*7001/i.test(text) && names <= 6) return true
   if (/Subtotal for Bill Group/i.test(text) && names <= 6) return true
   if (/Page\s*4\s*of/i.test(text) && names <= 6) return true
-  return isMembershipDetailText(text) && names > 0 && names <= 4
+  return false
 }
 
 function isUsableRow(row: MemberRow): boolean {

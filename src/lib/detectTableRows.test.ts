@@ -45,4 +45,9 @@ describe('table geometry', () => {
     expect(name.x).toBeLessThan(amount.x)
     expect(amount.x + amount.w).toBeLessThan(row.x + row.w * 0.9)
   })
+
+  it('does not chop the bottom of a leftover-page crop', () => {
+    const overflow = tableCropRect(1000, 1000, 'overflow')
+    expect(overflow.y + overflow.h).toBeGreaterThan(900)
+  })
 })

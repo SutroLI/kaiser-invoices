@@ -18,7 +18,7 @@ export function tableCropRect(
       x: 0,
       y: pageHeight * 0.03,
       w: pageWidth,
-      h: pageHeight * 0.59,
+      h: pageHeight * 0.955,
     }
   }
   return {

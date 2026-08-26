@@ -257,8 +257,9 @@ export function cropMembershipTable(
   const w = src.width
   const h = src.height
   if (kind === 'overflow') {
-    // Leftover subscriber sits under the letterhead, not halfway down the page.
-    return cropCanvas(src, 0, h * 0.03, w, h * 0.62)
+    // Keep almost the full page. A short crop (to ~62%) dropped the second half of
+    // June's grid when locate only saw the first few names and called it overflow.
+    return cropCanvas(src, 0, h * 0.03, w, h * 0.985)
   }
   // Keep the first/last grid rows — 15%/6% crops were dropping Buckley/Cone/Winfield.
   return cropCanvas(src, w * 0.008, h * 0.08, w * 0.992, h * 0.985)

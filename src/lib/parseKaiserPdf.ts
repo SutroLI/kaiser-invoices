@@ -86,7 +86,7 @@ function ocrRenderRotation(page: PDFPageProxy): number | undefined {
 
 function fallbackTablePages(pageCount: number): number[] {
   const guess = new Set<number>()
-  for (const n of [3, 4, pageCount - 3, pageCount - 2, pageCount - 1]) {
+  for (const n of [3, 4, 5, 6, pageCount - 3, pageCount - 2, pageCount - 1]) {
     if (n >= 1 && n <= pageCount) guess.add(n)
   }
   return [...guess].sort((a, b) => a - b)
