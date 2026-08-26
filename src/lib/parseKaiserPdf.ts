@@ -194,7 +194,6 @@ export async function parseKaiserPdf(
       tableCanvas: HTMLCanvasElement
       words: OcrWordBox[]
     }> = []
-    let usedTesseractFallback = false
     for (const n of ordered) {
       if (legendPages.has(n)) continue
       const kind: 'main' | 'overflow' = n === firstFull ? 'main' : 'overflow'
@@ -219,7 +218,6 @@ export async function parseKaiserPdf(
               kind,
             )
             tablePasses.push({ page: n, tableCanvas: ocr.tableCanvas, words: ocr.words })
-            if (ocr.engine === 'tesseract') usedTesseractFallback = true
             if (ocr.text.trim()) {
               text = ocr.text
               result.usedOcr = true
@@ -241,12 +239,6 @@ export async function parseKaiserPdf(
           `Page ${n} looks like Membership Detail but no subscriber rows were read.`,
         )
       }
-    }
-
-    if (usedTesseractFallback) {
-      result.warnings.push(
-        'PaddleOCR did not read this table, so Tesseract was used. Charges may need more typing.',
-      )
     }
 
     const ocrMembers = mergeMemberLists([result.members]).map((row, i) =>
@@ -347,6 +339,5 @@ export async function parseKaiserPdf(
 }
 
 export async function finishOcr(): Promise<void> {
-  const { terminatePaddleOcr } = await import('./paddleOcr')
-  await Promise.all([terminateOcrWorker(), terminatePaddleOcr()])
+  await terminateOcrWorker()
 }

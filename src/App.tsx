@@ -313,9 +313,8 @@ function App() {
           <div className="workflow-panel">
             <div className="panel-card panel-card-instructions">
               <p className="panel-intro">
-                Drop a Kaiser PDF each month. The first read downloads PaddleOCR models in the
-                browser; after that they stay cached. OCR fills what it can and flags missing cells
-                so you can finish from the invoice — then export.
+                Drop a Kaiser PDF each month. OCR fills what it can and flags missing cells so you
+                can finish from the invoice — then export.
               </p>
             </div>
 

@@ -235,7 +235,7 @@ describe('OCR of a scanned Membership Detail table', () => {
     expect(withCharge.length).toBeGreaterThanOrEqual(12)
   })
 
-  it('parses a PaddleOCR-style row with spaces inside money', () => {
+  it('parses a row with spaces inside money', () => {
     const rows = parseMembershipRows(
       'BUCKLEY, CALEBJ 1 N XXX-XX-5314 E A DHMO $783 .00 $0.00 $783.00\nHOSLER,JACOB H 5 N XXX-XX-0176 ESD A DHMO $1 , 800.00 $0.00 $1,800 .00',
       7,
@@ -248,7 +248,7 @@ describe('OCR of a scanned Membership Detail table', () => {
     expect(hosler?.medicalCurrentCharge).toBe(1800)
   })
 
-  it('parses SCHILLER and SARRADET from Paddle-like lines', () => {
+  it('parses SCHILLER and SARRADET from spaced OCR lines', () => {
     const rows = parseMembershipRows(
       `SCHILLER, MINDY 3 N XXX-XX-3971 ED A DHMO $917.00 $0.00 $917.00
 SARRADET, INA M 1 N XXX-XX-1865 E A DHMO $1,512.00 $0.00 $1,512.00`,

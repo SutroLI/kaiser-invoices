@@ -16,7 +16,7 @@ function normalizeWhitespace(text: string): string {
     .trim()
 }
 
-/** PaddleOCR often splits `$1,800.00` into `$1 , 800.00` or `$783 .00`. */
+/** OCR often splits `$1,800.00` into `$1 , 800.00` or `$783 .00`. */
 export function glueSpacedMoney(text: string): string {
   return text
     .replace(/\$\s+/g, '$')
