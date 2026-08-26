@@ -7,7 +7,7 @@ import type { PreprocessMode } from '../types'
 
 type OcrWorker = {
   setParameters: (params: Record<string, string>) => Promise<unknown>
-  recognize: (image: HTMLCanvasElement) => Promise<{
+  recognize: (image: Blob) => Promise<{
     data: {
       text?: string
       confidence?: number
@@ -54,6 +54,39 @@ async function getWorker(): Promise<OcrWorker> {
     })
   }
   return workerPromise
+}
+
+/**
+ * Encode a canvas without HTMLCanvasElement.toBlob.
+ * Chrome often never fires that callback while the tab is in the background.
+ */
+async function canvasToOcrImage(canvas: HTMLCanvasElement): Promise<Blob> {
+  try {
+    if (typeof OffscreenCanvas !== 'undefined') {
+      const src = canvas.getContext('2d')
+      if (src) {
+        const off = new OffscreenCanvas(canvas.width, canvas.height)
+        const ctx = off.getContext('2d')
+        if (ctx && typeof off.convertToBlob === 'function') {
+          ctx.putImageData(src.getImageData(0, 0, canvas.width, canvas.height), 0, 0)
+          return await off.convertToBlob({ type: 'image/png' })
+        }
+      }
+    }
+  } catch {
+    // Fall through to a synchronous PNG encode.
+  }
+  const dataUrl = canvas.toDataURL('image/png')
+  const comma = dataUrl.indexOf(',')
+  const bin = atob(comma >= 0 ? dataUrl.slice(comma + 1) : '')
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: 'image/png' })
+}
+
+async function recognizeCanvas(canvas: HTMLCanvasElement) {
+  const worker = await getWorker()
+  return worker.recognize(await canvasToOcrImage(canvas))
 }
 
 export async function terminateOcrWorker(): Promise<void> {
@@ -177,7 +210,7 @@ export async function recognizeField(
     preserve_interword_spaces: '1',
   })
   const prepared = preprocessForOcr(image, preprocess)
-  const result = await worker.recognize(prepared)
+  const result = await recognizeCanvas(prepared)
   const text = (result.data.text ?? '').replace(/\s+/g, ' ').trim()
   const confidence =
     typeof result.data.confidence === 'number' && Number.isFinite(result.data.confidence)
@@ -418,7 +451,7 @@ export async function ocrMembershipTable(
   for (let i = 0; i < bands.length; i++) {
     onProgress?.(`reading table rows ${i + 1} of ${bands.length}`)
     const prepared = preprocessForOcr(bands[i])
-    const result = await worker.recognize(prepared)
+    const result = await recognizeCanvas(prepared)
     parts.push(textFromRecognizeData(result.data))
     words.push(...wordsFromRecognize(result.data, ranges[i].top))
   }
@@ -450,7 +483,7 @@ export async function ocrCanvas(
   })
   const recognizeImage = async (img: HTMLCanvasElement): Promise<string> => {
     const prepared = preprocessForOcr(img)
-    const result = await worker.recognize(prepared)
+    const result = await recognizeCanvas(prepared)
     return textFromRecognizeData(result.data)
   }
 

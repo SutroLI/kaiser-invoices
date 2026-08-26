@@ -74,7 +74,8 @@ async function renderPage(
   canvas.height = Math.ceil(viewport.height)
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Could not create canvas for OCR')
-  await page.render({ canvasContext: ctx, viewport, canvas }).promise
+  // `print` skips requestAnimationFrame. Display intent freezes in background tabs.
+  await page.render({ canvasContext: ctx, viewport, canvas, intent: 'print' }).promise
   return canvas
 }
 

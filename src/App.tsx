@@ -452,6 +452,7 @@ function App() {
                   {loading ? (
                     <span className="dropzone-file">
                       {progress || 'Processing invoices…'}
+                      <span className="dropzone-hint">You can switch tabs — reading keeps going.</span>
                     </span>
                   ) : (
                     <div className="dropzone-empty">
