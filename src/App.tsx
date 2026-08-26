@@ -4,7 +4,7 @@ import './App.css'
 import { COVERAGE_CODES, MEDICAL_PLANS, STATUS_CODES, coverageLabel, statusLabel } from './lib/codes'
 import { downloadCsv } from './lib/exportCsv'
 import { ADDED_ROW_FLAG, NOT_FOUND_FLAG, ignoredOcrWarning, isMissingOnInvoice } from './lib/matchRoster'
-import { DEFAULT_MEMBER_ROSTER, formatRosterName } from './lib/memberRoster'
+import { DEFAULT_MEMBER_ROSTER, formatRosterName, mergeRosterNames } from './lib/memberRoster'
 import { finishOcr, parseKaiserPdf } from './lib/parseKaiserPdf'
 import { hydrateMemberRow, parseMoney, formatMoney } from './lib/parseMembershipText'
 import type { MemberRow, ProcessedKaiserInvoice } from './types'
@@ -12,23 +12,34 @@ import type { MemberRow, ProcessedKaiserInvoice } from './types'
 type FilterMode = 'all' | 'issues'
 
 const ROSTER_KEY = 'kaiser-member-roster-v2'
-
-function readStoredRoster(): string[] {
-  try {
-    const raw = localStorage.getItem(ROSTER_KEY)
-    if (!raw) return [...DEFAULT_MEMBER_ROSTER]
-    const parsed = JSON.parse(raw) as unknown
-    if (Array.isArray(parsed) && parsed.every((n) => typeof n === 'string' && n.trim())) {
-      return parsed.map((n) => n.trim().toUpperCase())
-    }
-  } catch {
-    // ignore
-  }
-  return [...DEFAULT_MEMBER_ROSTER]
-}
+const ROSTER_PATCH_KEY = 'kaiser-member-roster-patch'
+const ROSTER_PATCH = 1
+const ROSTER_PATCH_NAMES = ['ROOS, KAREN', 'SCHILLER, MINDY']
 
 function persistRoster(names: string[]): void {
   localStorage.setItem(ROSTER_KEY, JSON.stringify(names))
+}
+
+function readStoredRoster(): string[] {
+  let names = [...DEFAULT_MEMBER_ROSTER]
+  try {
+    const raw = localStorage.getItem(ROSTER_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed) && parsed.every((n) => typeof n === 'string' && n.trim())) {
+        names = parsed.map((n) => n.trim().toUpperCase())
+      }
+    }
+    const patch = Number(localStorage.getItem(ROSTER_PATCH_KEY) || '0')
+    if (patch < ROSTER_PATCH) {
+      names = mergeRosterNames(names, ROSTER_PATCH_NAMES)
+      persistRoster(names)
+      localStorage.setItem(ROSTER_PATCH_KEY, String(ROSTER_PATCH))
+    }
+  } catch {
+    names = [...DEFAULT_MEMBER_ROSTER]
+  }
+  return names
 }
 
 type MemberPatch = Partial<

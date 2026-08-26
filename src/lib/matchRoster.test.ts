@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseMembershipRows } from './parseMembershipText'
 import { applyMemberRoster, ignoredOcrWarning, leftoverOcrAfterFill, rosterMatchScore, unusedOcrRows } from './matchRoster'
-import { formatRosterName, parseMemberRoster } from './memberRoster'
+import { DEFAULT_MEMBER_ROSTER, formatRosterName, mergeRosterNames, parseMemberRoster } from './memberRoster'
 
 describe('rosterMatchScore', () => {
   it('maps mangled OCR names onto the known subscriber', () => {
@@ -116,6 +116,22 @@ a.pdf,September 2026,"CONE, ARI M",4
     expect(parseMemberRoster('Roos, Karen\nWinfield, Jonathan F\n')).toEqual([
       'ROOS, KAREN',
       'WINFIELD, JONATHAN F',
+    ])
+  })
+})
+
+describe('DEFAULT_MEMBER_ROSTER', () => {
+  it('includes Roos and Schiller', () => {
+    expect(DEFAULT_MEMBER_ROSTER).toContain('ROOS, KAREN')
+    expect(DEFAULT_MEMBER_ROSTER).toContain('SCHILLER, MINDY')
+  })
+})
+
+describe('mergeRosterNames', () => {
+  it('adds missing names without duplicating', () => {
+    expect(mergeRosterNames(['BUCKLEY, CALEB J'], ['ROOS, KAREN', 'BUCKLEY, CALEB J'])).toEqual([
+      'BUCKLEY, CALEB J',
+      'ROOS, KAREN',
     ])
   })
 })

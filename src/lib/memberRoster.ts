@@ -24,6 +24,7 @@ export const DEFAULT_MEMBER_ROSTER = [
   'RABBETTS, SUNNEE DAE',
   'RAINSFORD, MELISSA N',
   'RODRIGUEZ, ELOISA M',
+  'ROOS, KAREN',
   'SANCHEZ, CECILIA',
   'SARRADET, INA M',
   'SCHILLER, MINDY',
@@ -113,6 +114,13 @@ export function parseMemberRoster(text: string): string[] {
     seen.add(n)
     return true
   })
+}
+
+export function mergeRosterNames(existing: string[], toAdd: string[]): string[] {
+  const seen = new Set(existing)
+  const extra = toAdd.filter((n) => n && !seen.has(n))
+  if (extra.length === 0) return existing
+  return [...existing, ...extra].sort((a, b) => a.localeCompare(b))
 }
 
 export function isRosterFileName(name: string): boolean {
