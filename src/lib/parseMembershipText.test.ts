@@ -291,7 +291,9 @@ describe('invoicesToCsv', () => {
       preprocess: 'contrast',
     }
     const csv = invoicesToCsv([invoice])
-    expect(csv).toContain('Name,Family Count,Coverage,Status,Medical Plan,Medical current charge')
+    expect(csv).toContain(
+      'Name,Family Count,Coverage,Status,Medical Plan,Medical current charge,Statement ID,File Name,Bill Period',
+    )
     expect(csv).toContain('ZAIKINE-SINCLAIR, ANASTASIA')
     expect(csv).toContain('1196.00')
     expect(csv).not.toContain('N/A')

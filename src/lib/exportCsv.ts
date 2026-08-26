@@ -10,15 +10,15 @@ function escapeCsv(value: string | number | null | undefined): string {
 }
 
 const HEADERS = [
-  'File Name',
-  'Bill Period',
-  'Statement ID',
   'Name',
   'Family Count',
   'Coverage',
   'Status',
   'Medical Plan',
   'Medical current charge',
+  'Statement ID',
+  'File Name',
+  'Bill Period',
 ]
 
 export function invoicesToCsv(invoices: ProcessedKaiserInvoice[]): string {
@@ -27,15 +27,15 @@ export function invoicesToCsv(invoices: ProcessedKaiserInvoice[]): string {
     if (inv.members.length === 0) {
       rows.push(
         [
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          inv.meta.statementId,
           inv.fileName,
           inv.meta.billPeriod,
-          inv.meta.statementId,
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
         ]
           .map(escapeCsv)
           .join(','),
@@ -46,15 +46,15 @@ export function invoicesToCsv(invoices: ProcessedKaiserInvoice[]): string {
       if (m.excluded) continue
       rows.push(
         [
-          inv.fileName,
-          inv.meta.billPeriod,
-          inv.meta.statementId,
           m.name,
           m.familyCount ?? '',
           m.coverage,
           m.status,
           m.medicalPlan,
           m.medicalCurrentCharge != null ? m.medicalCurrentCharge.toFixed(2) : '',
+          inv.meta.statementId,
+          inv.fileName,
+          inv.meta.billPeriod,
         ]
           .map(escapeCsv)
           .join(','),
